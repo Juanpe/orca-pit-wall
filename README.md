@@ -44,7 +44,7 @@ Let's get back to work 🙂
 - 🎯 **What to do now:** the sessions that have waited on you the longest, with their last message.
 - 👀 **Put seen sessions aside:** finished ones you already opened stop counting as pending, until the agent moves again.
 - 😴 **Catch stuck agents:** sessions Orca still calls "working" but that were cut off show up as idle, waiting on you.
-- 🌳 **Every worktree:** branch, PR state, checks and how many agents wait or work there.
+- 🌳 **Every worktree, by project:** branch, PR state, checks and how many agents wait or work there.
 - ⚡️ **Live:** refreshes every 5 s and instantly when an agent changes state.
 - 🎨 **Native look:** uses Orca's theme, light and dark.
 
@@ -80,7 +80,7 @@ There are three tabs:
 | --- | --- |
 | 🗺 **Overview** | Six counters, the org chart and **What to do now** |
 | 💬 **Sessions** | Everything waiting on you, everything working and, collapsed, the ones you already saw |
-| 🌳 **Worktrees** | Every worktree by latest activity, with branch, PR (`draft`, `open`, `merged`) and checks |
+| 🌳 **Worktrees** | Every worktree grouped by project, most recent first, with branch, PR (`draft`, `open`, `merged`) and checks |
 
 - **Click a session** → focuses its terminal.
 - **Click a worktree** → opens it.

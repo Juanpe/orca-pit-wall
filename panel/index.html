@@ -119,7 +119,11 @@
       details[open] summary h2::before { content: '▾ '; }
 
       /* Worktrees */
-      .wt { display: block; width: 100%; padding: 7px 4px; border-bottom: 1px solid var(--line); }
+      .wt-group { border: 1px solid var(--line); border-radius: 7px; background: var(--card); margin-bottom: 10px; overflow: hidden; }
+      .wt-group.hot { border-color: color-mix(in srgb, var(--c-waiting) 55%, var(--line)); }
+      .wt-head { padding: 7px 8px; border-bottom: 1px solid var(--line); background: var(--bg); }
+      .wt { display: block; width: 100%; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+      .wt:last-child { border-bottom: 0; }
       .wt:hover { background: var(--hover); }
       .wt .top { display: flex; gap: 8px; align-items: baseline; }
       .wt .name { font-weight: 600; flex: 1; }

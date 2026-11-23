@@ -1,6 +1,6 @@
 import { assert, test } from 'orca/testing'
 import { sampleSnapshot } from './fixtures'
-import { buildView, pruneSeen, seenKey } from './view'
+import { buildView, groupWorktrees, pruneSeen, seenKey } from './view'
 
 const NOW = 2_000_000_000_000
 
@@ -40,4 +40,13 @@ test('pruneSeen forgets sessions that moved or closed', () => {
   const live = seenKey(snap.waiting[1])
   assert.deepEqual(pruneSeen(snap, { [live]: true, 'term_gone|done|1': true }), { [live]: true })
   assert.equal(pruneSeen(snap, { [live]: true }), null)
+})
+
+test('groups worktrees by project, the most recently active project first', () => {
+  const snap = sampleSnapshot(NOW)
+  const extra = { ...snap.worktrees[0], key: 'w9', name: 'old', lastActivityAt: NOW - 86_400_000 }
+  const groups = groupWorktrees([...snap.worktrees, extra])
+  assert.deepEqual(groups.map((g) => g.project), ['storefront', 'api', 'notes'])
+  assert.deepEqual(groups[0].worktrees.map((w) => w.key), ['w1', 'w9'])
+  assert.deepEqual([groups[0].waiting, groups[0].working], [2, 0])
 })

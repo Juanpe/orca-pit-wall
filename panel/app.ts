@@ -3,7 +3,7 @@
 import '../src/protocol'
 import type { AgentRow, RowState, Snapshot, WorktreeRow } from '../src/protocol'
 import { short } from '../src/time'
-import { buildView, canBeSeen, pruneSeen, seenKey, type Seen, type View } from '../src/view'
+import { buildView, canBeSeen, groupWorktrees, pruneSeen, seenKey, type ProjectWorktrees, type Seen, type View } from '../src/view'
 
 const REFRESH_MS = 5000
 const EVENT_DEBOUNCE_MS = 400
@@ -174,9 +174,8 @@ const CHECKS: Record<string, string> = {
 }
 
 function worktree(w: WorktreeRow): string {
-  const sub = [w.project !== w.name ? w.project : '', w.branch && w.branch !== w.name ? w.branch : '']
-    .filter(Boolean)
-    .join(' · ')
+  // The project is the group's header, so only a branch that differs from the name is worth repeating.
+  const sub = w.branch && w.branch !== w.name ? w.branch : ''
   const chips: string[] = []
   if (w.pr) {
     const [text, color] = PR_STATE[w.pr.state] ?? [w.pr.state, 'var(--muted)']
@@ -234,8 +233,25 @@ function sessions(view: View): string {
     ${seenList(view)}`
 }
 
+function worktreeGroup(g: ProjectWorktrees): string {
+  const color = g.waiting ? 'var(--c-waiting)' : g.working ? 'var(--c-working)' : 'var(--muted)'
+  const parts = [
+    `${g.worktrees.length} worktree${g.worktrees.length === 1 ? '' : 's'}`,
+    g.waiting ? `${g.waiting} waiting` : '',
+    g.working ? `${g.working} working` : ''
+  ].filter(Boolean)
+  return `<section class="wt-group${g.waiting ? ' hot' : ''}">
+    <div class="office-head wt-head">
+      <span class="office-icon" style="--c:${color}">${initial(g.project)}</span>
+      <div class="trunc"><b class="trunc">${esc(g.project)}</b><small>${parts.join(' · ')}</small></div>
+    </div>
+    ${g.worktrees.map(worktree).join('')}
+  </section>`
+}
+
 function worktrees(s: Snapshot): string {
-  return `<h2><span>Worktrees</span><span>${s.worktrees.length}</span></h2>${s.worktrees.map(worktree).join('')}`
+  const groups = groupWorktrees(s.worktrees)
+  return `<h2><span>Worktrees by project</span><span>${s.worktrees.length}</span></h2>${groups.map(worktreeGroup).join('')}`
 }
 
 function header(): string {

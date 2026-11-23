@@ -1,6 +1,6 @@
 // What the visual panel draws, worked out from a snapshot and the sessions already seen.
 // Pure, so src/view.test.ts can check it without a browser.
-import type { AgentRow, RowState, Snapshot } from './protocol'
+import type { AgentRow, RowState, Snapshot, WorktreeRow } from './protocol'
 
 export type Seen = Record<string, true>
 
@@ -88,4 +88,30 @@ export function pruneSeen(snap: Snapshot, seen: Seen): Seen | null {
   const next: Seen = {}
   for (const k of kept) next[k] = true
   return next
+}
+
+export type ProjectWorktrees = {
+  project: string
+  worktrees: WorktreeRow[]
+  waiting: number
+  working: number
+}
+
+/** Worktrees grouped by project: the most recently active project first, keeping the snapshot's order inside each. */
+export function groupWorktrees(worktrees: WorktreeRow[]): ProjectWorktrees[] {
+  const groups = new Map<string, ProjectWorktrees & { last: number }>()
+  for (const w of worktrees) {
+    let g = groups.get(w.project)
+    if (!g) {
+      g = { project: w.project, worktrees: [], waiting: 0, working: 0, last: 0 }
+      groups.set(w.project, g)
+    }
+    g.worktrees.push(w)
+    g.waiting += w.agentsWaiting
+    g.working += w.agentsWorking
+    g.last = Math.max(g.last, w.lastActivityAt ?? 0)
+  }
+  return [...groups.values()]
+    .sort((a, b) => b.last - a.last || a.project.localeCompare(b.project))
+    .map(({ last: _last, ...g }) => g)
 }
