@@ -1,0 +1,38 @@
+{
+  "manifestVersion": 2,
+  "id": "pit-wall",
+  "name": "Pit Wall",
+  "version": "0.1.0",
+  "description": "Read-only panel: who is waiting on you, who is working, and the state of every worktree.",
+  "engines": {
+    "orca": ">=1.4.259"
+  },
+  "execution": "trusted-worker",
+  "pluginApi": 1,
+  "main": "src/worker.ts",
+  "contributes": {
+    "panels": [
+      {
+        "id": "pit-wall",
+        "title": "Pit Wall",
+        "icon": "bell",
+        "entry": "panel/index.html",
+        "ui": "html"
+      }
+    ]
+  },
+  "capabilities": [
+    {
+      "kind": "workspace:read"
+    },
+    {
+      "kind": "agent:read"
+    },
+    {
+      "kind": "workspace:write"
+    },
+    {
+      "kind": "storage:own"
+    }
+  ]
+}
