@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "pit-wall",
   "name": "Pit Wall",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Read-only panel: who is waiting on you, who is working, and the state of every worktree.",
   "engines": {
     "orca": ">=1.4.259"
@@ -33,6 +33,27 @@
     },
     {
       "kind": "storage:own"
+    }
+  ],
+  "cover": {
+    "path": "assets/cover.png",
+    "alt": "Pit Wall next to its tagline: who is waiting on you, who is working, every worktree."
+  },
+  "screenshots": [
+    {
+      "path": "assets/screenshot-overview.png",
+      "alt": "The Overview tab: counters, an org chart of projects and their sessions colored by state, and What to do now.",
+      "caption": "Every agent at a glance"
+    },
+    {
+      "path": "assets/screenshot-sessions.png",
+      "alt": "The Sessions tab: sessions waiting on you with their last message, then sessions still working with their current tool.",
+      "caption": "What to do now"
+    },
+    {
+      "path": "assets/screenshot-worktrees.png",
+      "alt": "The Worktrees tab: each worktree with its project, PR state, checks and agents waiting or working.",
+      "caption": "Every worktree, with its PR"
     }
   ]
 }

@@ -1,3 +1,5 @@
+![Pit Wall: who is waiting on you, who is working, every worktree](assets/cover.png)
+
 <p align="center">
   <a href="#installation"><img src="https://img.shields.io/badge/Orca-1.4.259%2B-222222" alt="Orca 1.4.259+"></a>
   <a href="#installation"><img src="https://img.shields.io/badge/Orca_plugin-panel-4BC51D" alt="Orca plugin panel"></a>
@@ -30,7 +32,7 @@ Let's get back to work 🙂
 </p>
 
 <p align="center">
-  <img src=".github/assets/pit-wall-overview.png" alt="Pit Wall's overview: counters for sessions waiting, working and idle, an org chart of four projects with their sessions colored by state, and a What to do now list led by a permission request." width="420">
+  <img src="assets/pit-wall-overview.png" alt="Pit Wall's overview: counters for sessions waiting, working and idle, an org chart of four projects with their sessions colored by state, and a What to do now list led by a permission request." width="420">
 </p>
 
 <a name="features"></a>
