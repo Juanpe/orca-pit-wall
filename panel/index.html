@@ -115,8 +115,8 @@
       .empty { border: 1px dashed var(--line); border-radius: 6px; padding: 12px; text-align: center; color: var(--muted); }
       details summary { cursor: pointer; list-style: none; }
       details summary::-webkit-details-marker { display: none; }
-      details summary h2::before { content: '▸ '; }
-      details[open] summary h2::before { content: '▾ '; }
+      details summary h2 > span:first-child::before { content: '▸ '; }
+      details[open] summary h2 > span:first-child::before { content: '▾ '; }
 
       /* Worktrees */
       .wt-group { border: 1px solid var(--line); border-radius: 7px; background: var(--card); margin-bottom: 10px; overflow: hidden; }

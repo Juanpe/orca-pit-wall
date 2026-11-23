@@ -45,6 +45,7 @@ Let's get back to work 🙂
 - 👀 **Put seen sessions aside:** finished ones you already opened stop counting as pending, until the agent moves again.
 - 😴 **Catch stuck agents:** sessions Orca still calls "working" but that were cut off show up as idle, waiting on you.
 - 🌳 **Every worktree, by project:** branch, PR state, checks and how many agents wait or work there.
+- 🔀 **PRs that need you:** failing checks first, then running, ready for review and drafts.
 - ⚡️ **Live:** refreshes every 5 s and instantly when an agent changes state.
 - 🎨 **Native look:** uses Orca's theme, light and dark.
 
@@ -74,16 +75,17 @@ Orca installs the newest `vX.Y.Z` tag. Update with `orca plugin update juanpe.pi
 
 ## 🐒 Usage
 
-There are three tabs:
+There are four tabs:
 
 | Tab | What you get |
 | --- | --- |
 | 🗺 **Overview** | Six counters, the org chart and **What to do now** |
 | 💬 **Sessions** | Everything waiting on you, everything working and, collapsed, the ones you already saw |
 | 🌳 **Worktrees** | Every worktree grouped by project, most recent first, with branch, PR (`draft`, `open`, `merged`) and checks |
+| 🔀 **PRs** | Every PR in your worktrees by what it needs: checks failing, checks running, ready for review, drafts and, collapsed, merged or closed |
 
 - **Click a session** → focuses its terminal.
-- **Click a worktree** → opens it.
+- **Click a worktree or a PR** → opens the worktree.
 - **The header** says `● live · time`, and switches to `no data` if refreshing stops.
 
 > 💡 Questions and permission prompts are never put aside as seen: they wait
@@ -144,7 +146,7 @@ npx -p typescript tsc -p .                            # types (after `orca plugi
 | File | What it does |
 | --- | --- |
 | `src/model.ts` | Joins API and CLI data and sorts the sections (pure, tested in `model.test.ts`) |
-| `src/view.ts` | Groups by project and separates new from seen (pure, tested in `view.test.ts`) |
+| `src/view.ts` | Groups by project, separates new from seen and sorts PRs (pure, tested in `view.test.ts`) |
 | `src/worker.ts` | Reads Orca and answers `snapshot` and `open` |
 | `panel/index.html`, `panel/app.ts` | The panel: HTML, CSS and the SVG org chart |
 

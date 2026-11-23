@@ -3,12 +3,22 @@
 import '../src/protocol'
 import type { AgentRow, RowState, Snapshot, WorktreeRow } from '../src/protocol'
 import { short } from '../src/time'
-import { buildView, canBeSeen, groupWorktrees, pruneSeen, seenKey, type ProjectWorktrees, type Seen, type View } from '../src/view'
+import {
+  buildView,
+  canBeSeen,
+  groupWorktrees,
+  pruneSeen,
+  seenKey,
+  type ProjectWorktrees,
+  type PrRow,
+  type Seen,
+  type View
+} from '../src/view'
 
 const REFRESH_MS = 5000
 const EVENT_DEBOUNCE_MS = 400
 const SEEN_KEY = 'seen'
-type Tab = 'overview' | 'sessions' | 'worktrees'
+type Tab = 'overview' | 'sessions' | 'worktrees' | 'prs'
 
 const STATE: Record<RowState, { tag: string; color: string; legend: string }> = {
   blocked: { tag: 'PERMISSION', color: 'var(--c-blocked)', legend: 'needs permission' },
@@ -173,20 +183,27 @@ const CHECKS: Record<string, string> = {
   neutral: 'var(--muted)'
 }
 
-function worktree(w: WorktreeRow): string {
-  // The project is the group's header, so only a branch that differs from the name is worth repeating.
-  const sub = w.branch && w.branch !== w.name ? w.branch : ''
+function prChips(pr: NonNullable<WorktreeRow['pr']>): string[] {
+  const [text, color] = PR_STATE[pr.state.toLowerCase()] ?? [pr.state, 'var(--muted)']
+  const chips = [`<span class="chip c" style="--c:${color}">PR #${pr.number} ${esc(text)}</span>`]
+  if (pr.checks && pr.total)
+    chips.push(`<span class="chip c" style="--c:${CHECKS[pr.checks]}">checks ${pr.passed}/${pr.total}</span>`)
+  return chips
+}
+
+function agentChips(w: WorktreeRow): string[] {
   const chips: string[] = []
-  if (w.pr) {
-    const [text, color] = PR_STATE[w.pr.state] ?? [w.pr.state, 'var(--muted)']
-    chips.push(`<span class="chip c" style="--c:${color}">PR #${w.pr.number} ${text}</span>`)
-    if (w.pr.checks && w.pr.total)
-      chips.push(`<span class="chip c" style="--c:${CHECKS[w.pr.checks]}">checks ${w.pr.passed}/${w.pr.total}</span>`)
-  }
   if (w.agentsWaiting)
     chips.push(`<span class="chip c" style="--c:var(--c-waiting)"><span class="dot"></span>${w.agentsWaiting} waiting</span>`)
   if (w.agentsWorking)
     chips.push(`<span class="chip c" style="--c:var(--c-working)"><span class="dot"></span>${w.agentsWorking} working</span>`)
+  return chips
+}
+
+function worktree(w: WorktreeRow): string {
+  // The project is the group's header, so only a branch that differs from the name is worth repeating.
+  const sub = w.branch && w.branch !== w.name ? w.branch : ''
+  const chips = [...(w.pr ? prChips(w.pr) : []), ...agentChips(w)]
   return `<button class="wt" data-ws="${esc(w.workspaceId)}">
     <div class="top"><span class="name trunc">${esc(w.name)}</span><span class="ago">${ago(w.lastActivityAt)}</span></div>
     ${sub ? `<div class="muted trunc">${esc(sub)}</div>` : ''}
@@ -254,6 +271,37 @@ function worktrees(s: Snapshot): string {
   return `<h2><span>Worktrees by project</span><span>${s.worktrees.length}</span></h2>${groups.map(worktreeGroup).join('')}`
 }
 
+function prItem(w: PrRow, color: string, dim = false): string {
+  const chips = [...prChips(w.pr), ...agentChips(w)]
+  return `<button class="item${dim ? ' seen' : ''}" style="--c:${color}" data-ws="${esc(w.workspaceId)}" title="${esc(w.pr.title)}">
+    <div class="top"><span class="title trunc">${esc(w.pr.title)}</span><span class="ago">${ago(w.lastActivityAt)}</span></div>
+    <div class="sub trunc">${esc(where({ project: w.project, workspace: w.name }))}</div>
+    <div class="chips">${chips.join('')}</div>
+  </button>`
+}
+
+function prList(title: string, items: PrRow[], color: string): string {
+  if (!items.length) return ''
+  return `<h2><span>${title}</span><span>${items.length}</span></h2>${items.map((w) => prItem(w, color)).join('')}`
+}
+
+function prs(view: View): string {
+  const p = view.prs
+  const finished = p.finished.length
+    ? `<details><summary><h2><span>Merged or closed</span><span>${p.finished.length}</span></h2></summary>
+      ${p.finished.map((w) => prItem(w, 'var(--line)', true)).join('')}</details>`
+    : ''
+  if (!p.active && !finished) return `<div class="empty">No pull requests in your worktrees.</div>`
+  return `
+    ${prList('Checks failing', p.failing, 'var(--c-blocked)')}
+    ${prList('Checks running', p.pending, 'var(--c-waiting)')}
+    ${prList('Ready for review', p.ready, 'var(--c-done)')}
+    ${prList('Drafts', p.drafts, 'var(--muted)')}
+    ${p.active ? '' : `<div class="empty">No open pull requests.</div>`}
+    ${finished}
+    <p class="hint">Click a PR → open its worktree.</p>`
+}
+
 function header(): string {
   const live = liveText()
   return `<header>
@@ -265,7 +313,7 @@ function header(): string {
 function tabs(view: View): string {
   const t = (id: Tab, label: string, n?: number) =>
     `<button role="tab" data-tab="${id}" aria-selected="${tab === id}">${label}${n !== undefined ? `<span class="n">${n}</span>` : ''}</button>`
-  return `<nav role="tablist">${t('overview', 'Overview')}${t('sessions', 'Sessions', view.kpis.fresh)}${t('worktrees', 'Worktrees', view.kpis.worktrees)}</nav>`
+  return `<nav role="tablist">${t('overview', 'Overview')}${t('sessions', 'Sessions', view.kpis.fresh)}${t('worktrees', 'Worktrees', view.kpis.worktrees)}${t('prs', 'PRs', view.prs.active)}</nav>`
 }
 
 function render(): void {
@@ -283,7 +331,14 @@ function render(): void {
       ? `<div class="alert" style="--c:var(--c-waiting)">No PRs or last messages: “orca worktree ps” failed.</div>`
       : ''
   ].join('')
-  const body = tab === 'overview' ? overview(view) : tab === 'sessions' ? sessions(view) : worktrees(snap)
+  const body =
+    tab === 'overview'
+      ? overview(view)
+      : tab === 'sessions'
+        ? sessions(view)
+        : tab === 'worktrees'
+          ? worktrees(snap)
+          : prs(view)
   // Keep the reader where they were across the 5 s redraws.
   const y = window.scrollY
   const openDetails = !!app.querySelector('details[open]')

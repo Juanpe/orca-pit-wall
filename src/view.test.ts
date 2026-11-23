@@ -1,6 +1,6 @@
 import { assert, test } from 'orca/testing'
 import { sampleSnapshot } from './fixtures'
-import { buildView, groupWorktrees, pruneSeen, seenKey } from './view'
+import { buildView, groupPrs, groupWorktrees, pruneSeen, seenKey } from './view'
 
 const NOW = 2_000_000_000_000
 
@@ -49,4 +49,31 @@ test('groups worktrees by project, the most recently active project first', () =
   assert.deepEqual(groups.map((g) => g.project), ['storefront', 'api', 'notes'])
   assert.deepEqual(groups[0].worktrees.map((w) => w.key), ['w1', 'w9'])
   assert.deepEqual([groups[0].waiting, groups[0].working], [2, 0])
+})
+
+test('sorts PRs by what they need: failing checks, running, ready, drafts; merged apart', () => {
+  const [draft, failing, folder] = sampleSnapshot(NOW).worktrees
+  const pr = (key: string, project: string, number: number, state: string, checks: 'success' | 'pending' | null) => ({
+    ...folder,
+    key,
+    project,
+    pr: { number, state, title: key, checks, passed: 0, total: 0 }
+  })
+  const sections = groupPrs([
+    draft,
+    failing,
+    folder,
+    pr('ready', 'api', 1, 'open', 'success'),
+    pr('running', 'api', 2, 'open', 'pending'),
+    pr('merged', 'api', 3, 'merged', 'success'),
+    pr('same-pr', 'api', 1, 'open', 'success'),
+    pr('other-repo', 'web', 1, 'open', null)
+  ])
+  const keys = (rows: { key: string }[]) => rows.map((r) => r.key)
+  assert.deepEqual(keys(sections.failing), ['w2'])
+  assert.deepEqual(keys(sections.pending), ['running'])
+  assert.deepEqual(keys(sections.ready), ['ready', 'other-repo'])
+  assert.deepEqual(keys(sections.drafts), ['w1'])
+  assert.deepEqual(keys(sections.finished), ['merged'])
+  assert.equal(sections.active, 5)
 })

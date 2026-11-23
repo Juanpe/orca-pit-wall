@@ -2,8 +2,8 @@
   "manifestVersion": 2,
   "id": "pit-wall",
   "name": "Pit Wall",
-  "version": "0.1.2",
-  "description": "Read-only panel: who is waiting on you, who is working, and the state of every worktree.",
+  "version": "0.2.0",
+  "description": "Read-only panel: who is waiting on you, who is working, the state of every worktree and the PRs that need you.",
   "engines": {
     "orca": ">=1.4.259"
   },
@@ -54,6 +54,11 @@
       "path": "assets/screenshot-worktrees.png",
       "alt": "The Worktrees tab: worktrees grouped by project, each with its PR state, checks and agents waiting or working.",
       "caption": "Every worktree, by project"
+    },
+    {
+      "path": "assets/screenshot-prs.png",
+      "alt": "The PRs tab: pull requests sorted by checks failing, checks running, ready for review and drafts, each with its checks and the agents in its worktree.",
+      "caption": "PRs that need you"
     }
   ]
 }

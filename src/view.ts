@@ -26,6 +26,7 @@ export type View = {
   looked: AgentRow[]
   working: AgentRow[]
   offices: Office[]
+  prs: PrSections
   kpis: { fresh: number; working: number; idle: number; sessions: number; projects: number; worktrees: number }
 }
 
@@ -68,6 +69,7 @@ export function buildView(snap: Snapshot, seen: Seen): View {
     looked,
     working: snap.working,
     offices,
+    prs: groupPrs(snap.worktrees),
     kpis: {
       fresh: fresh.length,
       working: snap.working.length,
@@ -114,4 +116,44 @@ export function groupWorktrees(worktrees: WorktreeRow[]): ProjectWorktrees[] {
   return [...groups.values()]
     .sort((a, b) => b.last - a.last || a.project.localeCompare(b.project))
     .map(({ last: _last, ...g }) => g)
+}
+
+export type PrRow = WorktreeRow & { pr: NonNullable<WorktreeRow['pr']> }
+
+export type PrSections = {
+  /** Checks failed: someone has to look. */
+  failing: PrRow[]
+  /** Checks still running. */
+  pending: PrRow[]
+  /** Open with checks green (or none): waiting for review or merge. */
+  ready: PrRow[]
+  drafts: PrRow[]
+  /** Merged or closed: kept out of the count, collapsed in the panel. */
+  finished: PrRow[]
+  /** PRs still alive: every section but `finished`. */
+  active: number
+}
+
+/**
+ * The worktrees that have a PR, sorted by what they need from you. A PR linked from several
+ * worktrees of one project shows once, on the most recently active (the snapshot's order).
+ */
+export function groupPrs(worktrees: WorktreeRow[]): PrSections {
+  const out: PrSections = { failing: [], pending: [], ready: [], drafts: [], finished: [], active: 0 }
+  const shown = new Set<string>()
+  for (const w of worktrees) {
+    if (!w.pr) continue
+    const id = `${w.project}#${w.pr.number}`
+    if (shown.has(id)) continue
+    shown.add(id)
+    const row = w as PrRow
+    const state = w.pr.state.toLowerCase()
+    if (state === 'merged' || state === 'closed') out.finished.push(row)
+    else if (w.pr.checks === 'failure') out.failing.push(row)
+    else if (w.pr.checks === 'pending') out.pending.push(row)
+    else if (state === 'draft') out.drafts.push(row)
+    else out.ready.push(row)
+  }
+  out.active = out.failing.length + out.pending.length + out.ready.length + out.drafts.length
+  return out
 }
