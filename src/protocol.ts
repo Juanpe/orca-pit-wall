@@ -29,6 +29,8 @@ export type PrInfo = {
   number: number
   state: string
   title: string
+  /** The PR on GitHub; only http(s) links are kept. */
+  url: string | null
   checks: 'success' | 'failure' | 'pending' | 'neutral' | null
   passed: number
   total: number

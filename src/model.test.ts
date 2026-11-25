@@ -50,6 +50,7 @@ const cli: CliWorktree[] = [
       number: 143,
       state: 'draft',
       title: 'feat: top',
+      url: 'https://github.com/acme/menu/pull/143',
       checksStatus: 'success',
       checksSummary: { passed: 6, total: 6 }
     },
@@ -92,6 +93,12 @@ test('lists every worktree with branch, PR and counts, latest activity first', (
       ['Blog', null, null, null, 0, 0]
     ]
   )
+  assert.equal(snap.worktrees[0].pr?.url, 'https://github.com/acme/menu/pull/143')
+})
+
+test('keeps only http(s) PR links', () => {
+  const odd = [{ ...cli[0], linkedPR: { ...cli[0].linkedPR!, url: 'javascript:alert(1)' } }]
+  assert.equal(buildSnapshot(api, odd, NOW).worktrees.find((w) => w.pr)?.pr?.url, null)
 })
 
 test('works without the CLI: API data only', () => {

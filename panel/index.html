@@ -96,6 +96,24 @@
       .node .wt-name { font: 9px var(--mono); color: var(--muted); }
       .node .ago { font: 9.5px var(--mono); color: var(--muted); flex: none; }
       .node.seen { opacity: .55; }
+      /* The workspace open in Orca: a fill in the text colour (the theme's hover is too faint without its border),
+         and a small notch in the margin. */
+      .node, .wt { position: relative; }
+      .node.here, .wt.here, .node.here:hover, .wt.here:hover { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+      .here::before { content: ''; position: absolute; top: 50%; translate: 0 -50%;
+        border: 4px solid transparent; border-right: 0; border-left-color: var(--fg); }
+      .node.here::before { left: -6px; }
+      .wt.here::before { left: 3px; }
+      .node.here.seen { opacity: .8; }
+      /* The session's PR, a link on its own line. */
+      .pr-line { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; max-width: 100%;
+        font: 9px var(--mono); color: var(--muted); cursor: pointer; border-radius: 3px; }
+      .pr-line svg { width: 10px; height: 10px; flex: none; }
+      .pr-line b { font-weight: 600; color: var(--fg); }
+      .pr-line[data-pr]:hover { color: var(--fg); }
+      .pr-line[data-pr]:hover b { text-decoration: underline; text-underline-offset: 2px; }
+      .node .pr-line { margin-top: 1px; }
+      .item .pr-line { display: flex; width: max-content; font-size: 10.5px; margin-top: 3px; }
       .legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 10px; font: 9.5px var(--mono); color: var(--muted); }
       .legend > span { display: inline-flex; align-items: center; gap: 4px; }
 

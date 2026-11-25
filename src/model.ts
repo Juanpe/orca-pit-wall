@@ -33,6 +33,7 @@ export type CliWorktree = {
     number: number
     state: string
     title: string
+    url?: string | null
     checksStatus?: string | null
     checksSummary?: { passed?: number; total?: number } | null
   } | null
@@ -106,6 +107,7 @@ function prInfo(pr: CliWorktree['linkedPR']): PrInfo | null {
     number: pr.number,
     state: pr.state,
     title: pr.title,
+    url: pr.url && /^https?:\/\//.test(pr.url) ? pr.url : null,
     checks:
       checks === 'success' || checks === 'failure' || checks === 'pending' || checks === 'neutral'
         ? checks

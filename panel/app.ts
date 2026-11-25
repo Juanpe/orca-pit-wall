@@ -1,7 +1,8 @@
 // Pit Wall's visual panel: an org chart of what you launched (you → projects → open sessions),
 // who is waiting on you, and every worktree. It reads everything from the plugin's worker.
 import '../src/protocol'
-import type { AgentRow, RowState, Snapshot, WorktreeRow } from '../src/protocol'
+import type { FrameEvents } from 'orca/frame'
+import type { AgentRow, PrInfo, RowState, Snapshot, WorktreeRow } from '../src/protocol'
 import { short } from '../src/time'
 import {
   buildView,
@@ -36,8 +37,15 @@ let seen: Seen = {}
 let tab: Tab = 'overview'
 let error: string | null = null
 let lastOk = 0
+/** What Orca says is focused now (`workspace.changed`); null when nothing is. */
+type Focus = FrameEvents['workspace.changed']['context']
+let focus: Focus = null
+/** The snapshot id of the focused workspace, worked out once per draw. */
+let here: string | null = null
 /** Rows by id, for clicks: the DOM only carries the id. */
 let rows = new Map<string, AgentRow>()
+/** Each worktree's PR, so a session can show the one where it works. Rebuilt on every draw. */
+let prByWorkspace = new Map<string, PrInfo>()
 
 // ---------- data ----------
 
@@ -92,6 +100,37 @@ function open(workspaceId: string, terminalId?: string | null): void {
   })
 }
 
+/**
+ * Which snapshot workspace is the one open in Orca. The context's id is not always the id
+ * `workspace.list` uses, so its terminals and then its name and branch settle it.
+ */
+function focusedWorkspace(s: Snapshot, f: Focus): string | null {
+  if (!f) return null
+  if (f.workspaceId && s.worktrees.some((w) => w.workspaceId === f.workspaceId)) return f.workspaceId
+  const terminals = new Set(f.terminals.map((t) => t.id))
+  const byTerminal = [...s.waiting, ...s.working].find((a) => a.terminalId && terminals.has(a.terminalId))
+  if (byTerminal) return byTerminal.workspaceId
+  const branch = f.branch.replace(/^refs\/heads\//, '')
+  const byName = s.worktrees.filter((w) => w.name === f.displayName && (!branch || w.branch === branch))
+  return byName.length === 1 ? byName[0].workspaceId : null
+}
+
+/** Opens a PR in the browser. Orca asks the first time for a host the plugin has not opened before. */
+function openPr(url: string): void {
+  if (!orca.shell) {
+    error = 'Opening links needs the Orca desktop app.'
+    render()
+    return
+  }
+  orca.shell.openExternal(url).catch((e: unknown) => {
+    error = `Could not open the PR: ${e instanceof Error ? e.message : String(e)}`
+    render()
+  })
+}
+
+const isHere = (workspaceId: string): string => (workspaceId === here ? ' here' : '')
+const HERE_TITLE = ' · open now'
+
 // ---------- html helpers ----------
 
 const esc = (s: string): string =>
@@ -140,6 +179,19 @@ function icon(state: RowState): string {
 const isNew = (a: AgentRow, isSeen: boolean): boolean => a.state === 'done' && !isSeen
 const NEW = '<span class="new">NEW</span>'
 
+const PR_GLYPH =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v12"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/></svg>'
+
+/** The session's PR on its own line, a link to GitHub; nothing when its worktree has none. */
+function prLine(a: AgentRow): string {
+  const pr = prByWorkspace.get(a.workspaceId)
+  if (!pr) return ''
+  const label = `${PR_GLYPH}<b>#${pr.number}</b>`
+  return pr.url
+    ? `<span class="pr-line" data-pr="${esc(pr.url)}" title="${esc(`Open #${pr.number} on GitHub · ${pr.title}`)}">${label}<span class="arrow">↗</span></span>`
+    : `<span class="pr-line" title="${esc(pr.title)}">${label}</span>`
+}
+
 function kpi(label: string, value: number, color: string): string {
   return `<div class="kpi${value ? '' : ' zero'}" style="--c:${color}">
     <div class="label">${label}</div><div class="value">${value}</div></div>`
@@ -147,12 +199,12 @@ function kpi(label: string, value: number, color: string): string {
 
 function node(a: AgentRow, isSeen: boolean): string {
   const s = STATE[a.state]
-  return `<button class="node${live(a.state, isSeen)}" data-row="${rowId(a)}"
-      title="${esc(`${s.tag} · ${a.title} · ${where(a)}`)}">
+  return `<button class="node${live(a.state, isSeen)}${isHere(a.workspaceId)}" data-row="${rowId(a)}"
+      title="${esc(`${s.tag} · ${a.title} · ${where(a)}${a.workspaceId === here ? HERE_TITLE : ''}`)}">
     ${icon(a.state)}
     <span class="body"><span class="title trunc">${esc(a.title)}</span>${
       a.workspace !== a.project ? `<span class="wt-name trunc">${esc(a.workspace)}</span>` : ''
-    }</span>
+    }${prLine(a)}</span>
     ${isNew(a, isSeen) ? NEW : ''}<span class="ago">${ago(a.since)}</span>
   </button>`
 }
@@ -186,6 +238,7 @@ function item(a: AgentRow, isSeen = false): string {
   return `<button class="item${live(a.state, isSeen)}" style="--c:${s.color}" data-row="${rowId(a)}">
     <div class="top">${icon(a.state)}<span class="tag">${s.tag}</span><span class="title trunc">${esc(a.title)}</span><span class="ago">${ago(a.since)}</span></div>
     <div class="sub trunc">${esc(where(a))}</div>
+    ${prLine(a)}
     ${detail ? `<div class="msg trunc">${esc(detail)}</div>` : ''}
   </button>`
 }
@@ -235,7 +288,9 @@ function worktree(w: WorktreeRow): string {
   // The project is the group's header, so only a branch that differs from the name is worth repeating.
   const sub = w.branch && w.branch !== w.name ? w.branch : ''
   const chips = [...(w.pr ? prChips(w.pr) : []), ...agentChips(w)]
-  return `<button class="wt" data-ws="${esc(w.workspaceId)}">
+  return `<button class="wt${isHere(w.workspaceId)}" data-ws="${esc(w.workspaceId)}"${
+    w.workspaceId === here ? ` title="${esc(w.name + HERE_TITLE)}"` : ''
+  }>
     <div class="top"><span class="name trunc">${esc(w.name)}</span><span class="ago">${ago(w.lastActivityAt)}</span></div>
     ${sub ? `<div class="muted trunc">${esc(sub)}</div>` : ''}
     ${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}
@@ -378,6 +433,7 @@ function render(): void {
 
 function draw(): void {
   rows = new Map()
+  prByWorkspace = new Map(snap ? snap.worktrees.flatMap((w) => (w.pr ? [[w.workspaceId, w.pr] as const] : [])) : [])
   if (!snap) {
     app.innerHTML = error
       ? `${header()}<div class="alert" style="--c:var(--c-blocked)">Could not read Orca: ${esc(error)}</div>`
@@ -385,6 +441,7 @@ function draw(): void {
     return
   }
   const view = buildView(snap, seen)
+  here = focusedWorkspace(snap, focus)
   const alerts = [
     error ? `<div class="alert" style="--c:var(--c-blocked)">${esc(error)}</div>` : '',
     snap.enrichmentError
@@ -451,6 +508,12 @@ function drawWires(): void {
 // ---------- events ----------
 
 app.addEventListener('click', (event) => {
+  // The PR link sits inside the session's button: it opens the PR, not the terminal.
+  const pr = (event.target as HTMLElement).closest<HTMLElement>('[data-pr]')
+  if (pr?.dataset.pr) {
+    openPr(pr.dataset.pr)
+    return
+  }
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-row],[data-ws],[data-tab]')
   if (!target) return
   if (target.dataset.tab) {
@@ -492,6 +555,10 @@ let debounce: ReturnType<typeof setTimeout> | undefined
 orca.on('agent.status.changed', () => {
   clearTimeout(debounce)
   debounce = setTimeout(() => void refresh(), EVENT_DEBOUNCE_MS)
+})
+orca.on('workspace.changed', ({ context }) => {
+  focus = context
+  render()
 })
 orca.on('theme', () => layoutChart())
 orca.storage.onDidChange(({ key }) => {

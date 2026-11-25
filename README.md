@@ -97,7 +97,11 @@ Each session's state reads from its icon:
 With *Reduce motion* turned on in macOS, nothing moves.
 
 - **Click a session** → focuses its terminal.
+- **Click a session's `#123`** → opens its PR on GitHub. Only sessions whose
+  worktree has a PR show it.
 - **Click a worktree or a PR** → opens the worktree.
+- **The worktree open in Orca** is marked with ▸ and a light fill, in the org
+  chart and in Worktrees.
 - **The header** says `● live · time`, and switches to `no data` if refreshing stops.
 
 > 💡 Questions and permission prompts are never put aside as seen: they wait

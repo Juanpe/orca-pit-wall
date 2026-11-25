@@ -53,7 +53,7 @@ export function sampleSnapshot(now: number): Snapshot {
         name: 'menu-top-category',
         branch: 'feature/menu-top-category',
         kind: 'worktree',
-        pr: { number: 143, state: 'draft', title: 'feat: top category', checks: 'success', passed: 6, total: 6 },
+        pr: { number: 143, state: 'draft', title: 'feat: top category', url: 'https://github.com/acme/storefront/pull/143', checks: 'success', passed: 6, total: 6 },
         lastActivityAt: now - 40_000,
         agentsWaiting: 1,
         agentsWorking: 0
@@ -65,7 +65,7 @@ export function sampleSnapshot(now: number): Snapshot {
         name: 'feature/order-platform',
         branch: 'feature/order-platform',
         kind: 'worktree',
-        pr: { number: 5485, state: 'open', title: 'feat(bills)', checks: 'failure', passed: 11, total: 13 },
+        pr: { number: 5485, state: 'open', title: 'feat(bills)', url: 'https://github.com/acme/api/pull/5485', checks: 'failure', passed: 11, total: 13 },
         lastActivityAt: now - 3 * 60_000,
         agentsWaiting: 1,
         agentsWorking: 0
