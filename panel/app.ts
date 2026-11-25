@@ -378,7 +378,24 @@ function render(): void {
   app.innerHTML = header() + tabs(view) + alerts + body
   if (openDetails) app.querySelector('details')?.setAttribute('open', '')
   window.scrollTo(0, y)
+  layoutChart()
+}
+
+/** Masonry for the project boxes, then the wires to them. */
+function layoutChart(): void {
+  packOffices()
   drawWires()
+}
+
+const OFFICE_ROW_PX = 2
+const OFFICE_GAP_PX = 12
+
+/** Each project box spans as many grid rows as it is tall, so short ones don't stretch to a tall neighbour. */
+function packOffices(): void {
+  for (const el of document.querySelectorAll<HTMLElement>('[data-office]')) {
+    const rows = Math.ceil((el.getBoundingClientRect().height + OFFICE_GAP_PX) / OFFICE_ROW_PX)
+    el.style.gridRowEnd = `span ${rows}`
+  }
 }
 
 /** Curved wires from you to each project, as on an org chart. */
@@ -419,7 +436,7 @@ app.addEventListener('click', (event) => {
   }
 })
 
-new ResizeObserver(() => drawWires()).observe(document.body)
+new ResizeObserver(() => layoutChart()).observe(document.body)
 
 /** "live · 13:58:02" while data is fresh; otherwise how old it is. */
 function liveText(): { text: string; ok: boolean } {
@@ -447,7 +464,7 @@ orca.on('agent.status.changed', () => {
   clearTimeout(debounce)
   debounce = setTimeout(() => void refresh(), EVENT_DEBOUNCE_MS)
 })
-orca.on('theme', () => drawWires())
+orca.on('theme', () => layoutChart())
 orca.storage.onDidChange(({ key }) => {
   if (key === SEEN_KEY) void loadSeen().then(render)
 })

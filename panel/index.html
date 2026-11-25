@@ -77,7 +77,10 @@
         background: color-mix(in srgb, var(--c-me) 25%, transparent); color: var(--c-me); }
       .me b { display: block; font-size: 11.5px; }
       .me small { font: 9.5px var(--mono); color: var(--muted); }
-      .offices { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px 8px; }
+      /* Masonry: each project is as tall as its sessions; packOffices() in app.ts makes it span that many 2px rows,
+         so the next one packs in below it instead of every box in a row stretching to the tallest. */
+      .offices { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        grid-auto-rows: 2px; column-gap: 8px; align-items: start; }
       .office { position: relative; border: 1px dashed var(--line); border-radius: 7px; padding: 6px; background: var(--bg); min-width: 0; }
       .office.hot { border-style: solid; border-color: color-mix(in srgb, var(--c-waiting) 55%, var(--line)); }
       .office-head { display: flex; align-items: center; gap: 6px; padding: 0 2px 5px; min-width: 0; }
