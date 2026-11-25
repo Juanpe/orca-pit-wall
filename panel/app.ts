@@ -18,6 +18,8 @@ import {
 const REFRESH_MS = 5000
 const EVENT_DEBOUNCE_MS = 400
 const SEEN_KEY = 'seen'
+/** Longest animation period in index.html; every other period divides it. */
+const ANIM_MS = 3200
 type Tab = 'overview' | 'sessions' | 'worktrees' | 'prs'
 
 const STATE: Record<RowState, { tag: string; color: string; legend: string }> = {
@@ -109,6 +111,35 @@ function rowId(a: AgentRow): string {
 
 // ---------- pieces ----------
 
+/** Classes for a row by its state; a session you've already seen stays still. */
+function live(state: RowState, isSeen: boolean): string {
+  return isSeen ? ' seen' : ` s-${state}`
+}
+
+const LOCK =
+  '<svg viewBox="0 0 24 26" fill="currentColor"><path d="M6 10V7a6 6 0 0 1 12 0v3h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V12a2 2 0 0 1 2-2h1zm3 0h6V7a3 3 0 0 0-6 0v3z"/></svg>'
+const CHECK =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3L13 4.5"/></svg>'
+
+/** The state's shape: what it is reads from the shape, motion only where something is happening. */
+function icon(state: RowState): string {
+  const inner =
+    state === 'working'
+      ? '<i></i><i></i><i></i>'
+      : state === 'waiting'
+        ? '?'
+        : state === 'blocked'
+          ? LOCK
+          : state === 'done'
+            ? CHECK
+            : '<span class="dot"></span>'
+  return `<span class="ic ic-${state}" style="--c:${STATE[state].color}">${inner}</span>`
+}
+
+/** A finished session you haven't opened yet. Only the org chart says so: the lists already split new from seen. */
+const isNew = (a: AgentRow, isSeen: boolean): boolean => a.state === 'done' && !isSeen
+const NEW = '<span class="new">NEW</span>'
+
 function kpi(label: string, value: number, color: string): string {
   return `<div class="kpi${value ? '' : ' zero'}" style="--c:${color}">
     <div class="label">${label}</div><div class="value">${value}</div></div>`
@@ -116,13 +147,13 @@ function kpi(label: string, value: number, color: string): string {
 
 function node(a: AgentRow, isSeen: boolean): string {
   const s = STATE[a.state]
-  return `<button class="node${isSeen ? ' seen' : ''}${a.state === 'working' ? ' working' : ''}" data-row="${rowId(a)}"
+  return `<button class="node${live(a.state, isSeen)}" data-row="${rowId(a)}"
       title="${esc(`${s.tag} · ${a.title} · ${where(a)}`)}">
-    <span class="dot" style="--c:${s.color}"></span>
+    ${icon(a.state)}
     <span class="body"><span class="title trunc">${esc(a.title)}</span>${
       a.workspace !== a.project ? `<span class="wt-name trunc">${esc(a.workspace)}</span>` : ''
     }</span>
-    <span class="ago">${ago(a.since)}</span>
+    ${isNew(a, isSeen) ? NEW : ''}<span class="ago">${ago(a.since)}</span>
   </button>`
 }
 
@@ -152,8 +183,8 @@ function item(a: AgentRow, isSeen = false): string {
         : a.lastMessage
           ? `“${a.lastMessage}”`
           : null
-  return `<button class="item${isSeen ? ' seen' : ''}" style="--c:${s.color}" data-row="${rowId(a)}">
-    <div class="top"><span class="tag">${s.tag}</span><span class="title trunc">${esc(a.title)}</span><span class="ago">${ago(a.since)}</span></div>
+  return `<button class="item${live(a.state, isSeen)}" style="--c:${s.color}" data-row="${rowId(a)}">
+    <div class="top">${icon(a.state)}<span class="tag">${s.tag}</span><span class="title trunc">${esc(a.title)}</span><span class="ago">${ago(a.since)}</span></div>
     <div class="sub trunc">${esc(where(a))}</div>
     ${detail ? `<div class="msg trunc">${esc(detail)}</div>` : ''}
   </button>`
@@ -196,7 +227,7 @@ function agentChips(w: WorktreeRow): string[] {
   if (w.agentsWaiting)
     chips.push(`<span class="chip c" style="--c:var(--c-waiting)"><span class="dot"></span>${w.agentsWaiting} waiting</span>`)
   if (w.agentsWorking)
-    chips.push(`<span class="chip c" style="--c:var(--c-working)"><span class="dot"></span>${w.agentsWorking} working</span>`)
+    chips.push(`<span class="chip c" style="--c:var(--c-working)">${icon('working')}${w.agentsWorking} working</span>`)
   return chips
 }
 
@@ -216,7 +247,7 @@ function worktree(w: WorktreeRow): string {
 function overview(view: View): string {
   const k = view.kpis
   const legend = (['blocked', 'waiting', 'idle', 'done', 'working'] as RowState[])
-    .map((s) => `<span><span class="dot" style="--c:${STATE[s].color}"></span>${STATE[s].legend}</span>`)
+    .map((s) => `<span>${icon(s)}${STATE[s].legend}</span>`)
     .join('')
   return `
     <div class="kpis">
@@ -342,6 +373,8 @@ function render(): void {
   // Keep the reader where they were across the 5 s redraws.
   const y = window.scrollY
   const openDetails = !!app.querySelector('details[open]')
+  // Every animation shares one clock, so a redraw continues them instead of restarting them.
+  document.documentElement.style.setProperty('--phase', `-${Date.now() % ANIM_MS}ms`)
   app.innerHTML = header() + tabs(view) + alerts + body
   if (openDetails) app.querySelector('details')?.setAttribute('open', '')
   window.scrollTo(0, y)
