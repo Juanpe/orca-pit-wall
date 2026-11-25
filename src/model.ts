@@ -52,6 +52,8 @@ export type CliAgent = {
   toolInput?: string | null
   /** The agent's own turn. Orca keeps `state` at "working" while it watches a background task, even one that has ended. */
   mainAgent?: { state?: string; stateStartedAt?: number } | null
+  /** Subagents the session launched. While one works, the session is still working, whatever its own turn says. */
+  subagents?: { state?: string; description?: string | null; agentType?: string | null }[] | null
 }
 
 const MESSAGE_MAX = 140
@@ -107,6 +109,11 @@ function isSettled(state: string | undefined): state is 'done' | 'waiting' | 'bl
   return state === 'done' || state === 'waiting' || state === 'blocked'
 }
 
+/** The first subagent still working, if any. */
+function workingSubagent(cli: CliAgent | undefined) {
+  return cli?.subagents?.find((s) => s.state === 'working')
+}
+
 function prInfo(pr: CliWorktree['linkedPR']): PrInfo | null {
   if (!pr) return null
   const checks = pr.checksStatus
@@ -125,6 +132,11 @@ function prInfo(pr: CliWorktree['linkedPR']): PrInfo | null {
 }
 
 function activityOf(cli: CliAgent | undefined): string | null {
+  const sub = workingSubagent(cli)
+  if (sub) {
+    const what = flatten(sub.description ?? sub.agentType, ACTIVITY_MAX)
+    return what ? `Subagent · ${what}` : 'Subagent'
+  }
   if (!cli?.toolName) return null
   const input = flatten(cli.toolInput, ACTIVITY_MAX)
   return input ? `${cli.toolName} · ${input}` : cli.toolName
@@ -182,10 +194,14 @@ export function buildSnapshot(
         'Agente'
       // Orca keeps "working" while it watches a background task (`workingMode: "monitoring"`), even
       // one that never ends, such as an artifact watch. The agent's own turn says what it is doing:
-      // done, asking, or waiting for a permission.
+      // done, asking, or waiting for a permission. A subagent still working keeps it working.
       const main = match?.mainAgent
       const settled =
-        agent.state === 'working' && !!cw && match?.state === 'working' && isSettled(main?.state)
+        agent.state === 'working' &&
+        !!cw &&
+        match?.state === 'working' &&
+        isSettled(main?.state) &&
+        !workingSubagent(match)
           ? { state: main.state, since: main.stateStartedAt }
           : null
       // The API can also keep "working" after a session is cut off (Esc, Ctrl-C, a crash). When the

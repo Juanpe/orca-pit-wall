@@ -126,7 +126,9 @@ With *Reduce motion* turned on in macOS, nothing moves.
 - **Background tasks:** Orca also keeps a session "working" while it watches
   a background task, even one that never ends, such as Claude Code's watch on
   an artifact it published. When the agent's own turn is over, Pit Wall shows
-  what that turn says: done, a question or a permission.
+  what that turn says: done, a question or a permission. While a subagent
+  it launched is still working, the session stays in Working and shows
+  what that subagent is doing.
 
 <a name="permissions"></a>
 

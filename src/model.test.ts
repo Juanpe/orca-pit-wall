@@ -168,6 +168,39 @@ test('an agent whose own turn is over shows that turn, though Orca still watches
   assert.equal(buildSnapshot(watched, cliFor('working'), NOW).working.length, 1)
 })
 
+test('an agent waiting on a working subagent stays working, though its own turn is over', () => {
+  const api: ApiWorkspace[] = [
+    {
+      id: 'identity:wt2:local:ddd',
+      kind: 'worktree',
+      name: 'floorplan',
+      project: 'waiter',
+      branch: 'feature/floorplan',
+      status: null,
+      agents: [{ terminalId: 'term_8', title: 'Floorplan', agent: 'claude', state: 'working', stateStartedAt: NOW - 60_000 }]
+    }
+  ]
+  const cliWith = (sub: string): CliWorktree[] => [
+    {
+      worktreeId: 'x',
+      identity: { key: 'wt2:local:ddd' },
+      agents: [
+        {
+          address: 'term_8',
+          state: 'working',
+          mainAgent: { state: 'done', stateStartedAt: NOW - 20_000 },
+          subagents: [{ state: sub, agentType: 'general-purpose', description: 'Review the plan' }]
+        }
+      ]
+    }
+  ]
+  const busy = buildSnapshot(api, cliWith('working'), NOW)
+  assert.deepEqual(busy.waiting, [])
+  assert.deepEqual(busy.working.map((a) => [a.state, a.activity]), [['working', 'Subagent · Review the plan']])
+  // Once the subagent ends, the session's own turn shows again.
+  assert.equal(buildSnapshot(api, cliWith('done'), NOW).waiting[0].state, 'done')
+})
+
 test('cleanTitle drops Claude markup from session titles', async () => {
   const { cleanTitle } = await import('./model')
   assert.equal(cleanTitle('<local-command-caveat>Caveat: x</local-command-caveat> Revisar PR'), 'Revisar PR')
