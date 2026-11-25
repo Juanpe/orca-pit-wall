@@ -17,6 +17,8 @@ import {
 } from '../src/view'
 
 const REFRESH_MS = 5000
+/** How often to ask Orca which workspace is focused, in case `workspace.changed` did not arrive. */
+const FOCUS_POLL_MS = 1000
 const EVENT_DEBOUNCE_MS = 400
 const SEEN_KEY = 'seen'
 /** Longest animation period in index.html; every other period divides it. */
@@ -42,6 +44,13 @@ type Focus = FrameEvents['workspace.changed']['context']
 let focus: Focus = null
 /** The snapshot id of the focused workspace, worked out once per draw. */
 let here: string | null = null
+/**
+ * The terminal of the session last opened from this panel. Orca says which workspace is focused
+ * but not which of its tabs, so when that workspace has several sessions this one is marked.
+ */
+let lastOpened: string | null = null
+/** How many sessions the focused workspace has, worked out once per draw. */
+let hereSessions = 0
 /** Rows by id, for clicks: the DOM only carries the id. */
 let rows = new Map<string, AgentRow>()
 /** Each worktree's PR, so a session can show the one where it works. Rebuilt on every draw. */
@@ -89,7 +98,9 @@ function openRow(row: AgentRow): void {
   if (canBeSeen(row) && !seen[seenKey(row)]) {
     void saveSeen({ ...seen, [seenKey(row)]: true }).then(render)
   }
+  lastOpened = row.terminalId ?? null
   open(row.workspaceId, row.terminalId)
+  render()
 }
 
 function open(workspaceId: string, terminalId?: string | null): void {
@@ -129,6 +140,9 @@ function openPr(url: string): void {
 }
 
 const isHere = (workspaceId: string): string => (workspaceId === here ? ' here' : '')
+/** A session is open now when its workspace is and, if that workspace has several, it was the last opened here. */
+const sessionIsHere = (a: AgentRow): boolean =>
+  a.workspaceId === here && (hereSessions <= 1 || (!!a.terminalId && a.terminalId === lastOpened))
 const HERE_TITLE = ' · open now'
 
 // ---------- html helpers ----------
@@ -199,8 +213,9 @@ function kpi(label: string, value: number, color: string): string {
 
 function node(a: AgentRow, isSeen: boolean): string {
   const s = STATE[a.state]
-  return `<button class="node${live(a.state, isSeen)}${isHere(a.workspaceId)}" data-row="${rowId(a)}"
-      title="${esc(`${s.tag} · ${a.title} · ${where(a)}${a.workspaceId === here ? HERE_TITLE : ''}`)}">
+  const atHere = sessionIsHere(a)
+  return `<button class="node${live(a.state, isSeen)}${atHere ? ' here' : ''}" data-row="${rowId(a)}"
+      title="${esc(`${s.tag} · ${a.title} · ${where(a)}${atHere ? HERE_TITLE : ''}`)}">
     ${icon(a.state)}
     <span class="body"><span class="title trunc">${esc(a.title)}</span>${
       a.workspace !== a.project ? `<span class="wt-name trunc">${esc(a.workspace)}</span>` : ''
@@ -442,6 +457,7 @@ function draw(): void {
   }
   const view = buildView(snap, seen)
   here = focusedWorkspace(snap, focus)
+  hereSessions = [...snap.waiting, ...snap.working].filter((a) => a.workspaceId === here).length
   const alerts = [
     error ? `<div class="alert" style="--c:var(--c-blocked)">${esc(error)}</div>` : '',
     snap.enrichmentError
@@ -556,10 +572,22 @@ orca.on('agent.status.changed', () => {
   clearTimeout(debounce)
   debounce = setTimeout(() => void refresh(), EVENT_DEBOUNCE_MS)
 })
-orca.on('workspace.changed', ({ context }) => {
+orca.on('workspace.changed', ({ context }) => setFocus(context))
+
+/** Redraws only when the focused workspace or its terminals really changed. */
+function setFocus(context: Focus): void {
+  if (JSON.stringify(context) === JSON.stringify(focus)) return
   focus = context
   render()
-})
+}
+
+// Switching worktree from Orca's menus does not always send `workspace.changed`, so ask too.
+setInterval(() => {
+  if (document.visibilityState !== 'visible') return
+  orca.host.call('workspace.readContext', {}).then(setFocus, (e: unknown) => {
+    console.error('[pit-wall] could not read the focused workspace', e)
+  })
+}, FOCUS_POLL_MS)
 orca.on('theme', () => layoutChart())
 orca.storage.onDidChange(({ key }) => {
   if (key === SEEN_KEY) void loadSeen().then(render)
