@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "pit-wall",
   "name": "Pit Wall",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Read-only panel: who is waiting on you, who is working, the state of every worktree and the PRs that need you. Each agent state has its own icon, and only what needs you moves.",
   "engines": {
     "orca": ">=1.4.259"
