@@ -347,7 +347,36 @@ function tabs(view: View): string {
   return `<nav role="tablist">${t('overview', 'Overview')}${t('sessions', 'Sessions', view.kpis.fresh)}${t('worktrees', 'Worktrees', view.kpis.worktrees)}${t('prs', 'PRs', view.prs.active)}</nav>`
 }
 
+/**
+ * A redraw replaces the panel's HTML. One that lands between pressing and releasing the mouse removes
+ * the element you pressed, so the click never fires and you have to click again. Redraws asked for
+ * while the pointer is down wait until just after the click.
+ */
+let pressing = false
+let redrawHeld = false
+
+app.addEventListener('pointerdown', () => {
+  pressing = true
+})
+for (const type of ['pointerup', 'pointercancel'] as const) {
+  window.addEventListener(type, () => {
+    if (!pressing) return
+    pressing = false
+    // The click fires after pointerup: redraw on the next task, once it has been handled.
+    if (redrawHeld) setTimeout(render, 0)
+    redrawHeld = false
+  })
+}
+
 function render(): void {
+  if (pressing) {
+    redrawHeld = true
+    return
+  }
+  draw()
+}
+
+function draw(): void {
   rows = new Map()
   if (!snap) {
     app.innerHTML = error
