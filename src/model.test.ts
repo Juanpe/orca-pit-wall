@@ -140,6 +140,34 @@ test('an agent the API still calls working, but the CLI does not, is idle and wa
   assert.equal(buildSnapshot(stuck, null, NOW).working.length, 1)
 })
 
+test('an agent whose own turn is over shows that turn, though Orca still watches a background task', () => {
+  const watched: ApiWorkspace[] = [
+    {
+      id: 'identity:wt2:local:ccc',
+      kind: 'worktree',
+      name: 'menu-subcategories',
+      project: 'storefront',
+      branch: 'feature/menu-subcategories',
+      status: null,
+      agents: [{ terminalId: 'term_7', title: 'Subcategorías', agent: 'claude', state: 'working', stateStartedAt: NOW - 1_700_000 }]
+    }
+  ]
+  const cliFor = (main: string): CliWorktree[] => [
+    {
+      worktreeId: 'x',
+      identity: { key: 'wt2:local:ccc' },
+      agents: [{ address: 'term_7', state: 'working', toolName: 'Bash', mainAgent: { state: main, stateStartedAt: NOW - 30_000 } }]
+    }
+  ]
+  const done = buildSnapshot(watched, cliFor('done'), NOW)
+  assert.deepEqual(done.working, [])
+  // It answered 30 s ago: done since then, not idle since the watch began.
+  assert.deepEqual(done.waiting.map((a) => [a.title, a.state, a.since]), [['Subcategorías', 'done', NOW - 30_000]])
+  assert.equal(buildSnapshot(watched, cliFor('waiting'), NOW).waiting[0].state, 'waiting')
+  // While the agent itself works, it stays working.
+  assert.equal(buildSnapshot(watched, cliFor('working'), NOW).working.length, 1)
+})
+
 test('cleanTitle drops Claude markup from session titles', async () => {
   const { cleanTitle } = await import('./model')
   assert.equal(cleanTitle('<local-command-caveat>Caveat: x</local-command-caveat> Revisar PR'), 'Revisar PR')

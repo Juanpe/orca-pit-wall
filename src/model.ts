@@ -50,6 +50,8 @@ export type CliAgent = {
   lastAssistantMessage?: string | null
   toolName?: string | null
   toolInput?: string | null
+  /** The agent's own turn. Orca keeps `state` at "working" while it watches a background task, even one that has ended. */
+  mainAgent?: { state?: string; stateStartedAt?: number } | null
 }
 
 const MESSAGE_MAX = 140
@@ -98,6 +100,11 @@ function matchAgent(agent: ApiAgent, pool: CliAgent[]): CliAgent | undefined {
     }
   }
   return best
+}
+
+/** A main-agent state that means its turn is over: it finished, asks, or waits for a permission. */
+function isSettled(state: string | undefined): state is 'done' | 'waiting' | 'blocked' {
+  return state === 'done' || state === 'waiting' || state === 'blocked'
 }
 
 function prInfo(pr: CliWorktree['linkedPR']): PrInfo | null {
@@ -173,19 +180,27 @@ export function buildSnapshot(
         agent.title ??
         agent.agent ??
         'Agente'
-      // The API can keep "working" after a session is cut off (Esc, Ctrl-C, a crash). When the CLI
-      // answered for this workspace and does not see it working, it is idle at its prompt.
+      // Orca keeps "working" while it watches a background task (`workingMode: "monitoring"`), even
+      // one that never ends, such as an artifact watch. The agent's own turn says what it is doing:
+      // done, asking, or waiting for a permission.
+      const main = match?.mainAgent
+      const settled =
+        agent.state === 'working' && !!cw && match?.state === 'working' && isSettled(main?.state)
+          ? { state: main.state, since: main.stateStartedAt }
+          : null
+      // The API can also keep "working" after a session is cut off (Esc, Ctrl-C, a crash). When the
+      // CLI answered for this workspace and does not see it working, it is idle at its prompt.
       const stale = agent.state === 'working' && !!cw && match?.state !== 'working'
       const row: AgentRow = {
         key: `${ws.id}|${ws.name}|${terminalId}|${index}`,
-        state: stale ? 'idle' : agent.state,
-        since: agent.stateStartedAt,
+        state: settled ? settled.state : stale ? 'idle' : agent.state,
+        since: settled?.since ?? agent.stateStartedAt,
         project,
         workspace: ws.name,
         workspaceId: ws.id,
         title,
         lastMessage: flatten(match?.lastAssistantMessage),
-        activity: agent.state === 'working' && !stale ? activityOf(match) : null,
+        activity: agent.state === 'working' && !stale && !settled ? activityOf(match) : null,
         terminalId
       }
       if (row.state === 'working') {

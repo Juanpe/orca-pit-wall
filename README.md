@@ -123,6 +123,10 @@ With *Reduce motion* turned on in macOS, nothing moves.
   off without telling Orca (Esc, Ctrl-C, a half-finished exit). If
   `orca worktree ps` doesn't see that agent working, Pit Wall shows it as
   idle and waiting on you, which is where it really is.
+- **Background tasks:** Orca also keeps a session "working" while it watches
+  a background task, even one that never ends, such as Claude Code's watch on
+  an artifact it published. When the agent's own turn is over, Pit Wall shows
+  what that turn says: done, a question or a permission.
 
 <a name="permissions"></a>
 
