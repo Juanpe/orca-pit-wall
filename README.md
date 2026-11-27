@@ -119,6 +119,8 @@ With *Reduce motion* turned on in macOS, nothing moves.
   (read-only, cached for 4 s). If that fails, the panel keeps working and
   warns that those details are missing.
 - Agents without an open terminal (closed sessions) are left out.
+- A linked PR whose details have not loaded yet is shown as `PR #<number>`.
+  Missing titles never prevent the rest of the panel from refreshing.
 - **Idle:** the API sometimes still says "working" after a session was cut
   off without telling Orca (Esc, Ctrl-C, a half-finished exit). If
   `orca worktree ps` doesn't see that agent working, Pit Wall shows it as

@@ -32,7 +32,7 @@ export type CliWorktree = {
   linkedPR?: {
     number: number
     state: string
-    title: string
+    title?: string | null
     url?: string | null
     checksStatus?: string | null
     checksSummary?: { passed?: number; total?: number } | null
@@ -120,7 +120,9 @@ function prInfo(pr: CliWorktree['linkedPR']): PrInfo | null {
   return {
     number: pr.number,
     state: pr.state,
-    title: pr.title,
+    // Orca can retain just { number, state } while PR details are unavailable.
+    // Undefined is not a valid panel response, and the UI needs a string title.
+    title: pr.title ?? `PR #${pr.number}`,
     url: pr.url && /^https?:\/\//.test(pr.url) ? pr.url : null,
     checks:
       checks === 'success' || checks === 'failure' || checks === 'pending' || checks === 'neutral'

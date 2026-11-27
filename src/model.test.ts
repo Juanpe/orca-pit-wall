@@ -112,6 +112,18 @@ test('works without the CLI: API data only', () => {
   assert.equal(snap.worktrees[0].pr, null)
 })
 
+test('a linked PR without fetched details stays JSON-safe and has a readable title', () => {
+  for (const title of [undefined, null, 'Fetched PR title']) {
+    const snap = buildSnapshot(api, [{
+      ...cli[0],
+      linkedPR: { number: 143, state: 'open', ...(title === undefined ? {} : { title }) }
+    }], NOW)
+    assert.equal(snap.worktrees[0].pr?.title, title ?? 'PR #143')
+    // A round trip must preserve every field, as required by the panel bridge.
+    assert.deepEqual(JSON.parse(JSON.stringify(snap)), snap)
+  }
+})
+
 test('flatten keeps one readable line and cuts it', () => {
   assert.equal(flatten('# Hecho\n\n- uno\n- [dos](http://x)'), 'Hecho uno dos')
   assert.equal(flatten(''), null)
