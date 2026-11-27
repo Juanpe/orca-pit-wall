@@ -57,7 +57,7 @@ test('sorts PRs by what they need: failing checks, running, ready, drafts; merge
     ...folder,
     key,
     project,
-    pr: { number, state, title: key, checks, passed: 0, total: 0 }
+    pr: { number, state, title: key, url: null, checks, passed: 0, total: 0 }
   })
   const sections = groupPrs([
     draft,

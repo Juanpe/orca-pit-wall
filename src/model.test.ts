@@ -50,6 +50,7 @@ const cli: CliWorktree[] = [
       number: 143,
       state: 'draft',
       title: 'feat: top',
+      url: 'https://github.com/acme/menu/pull/143',
       checksStatus: 'success',
       checksSummary: { passed: 6, total: 6 }
     },
@@ -92,6 +93,12 @@ test('lists every worktree with branch, PR and counts, latest activity first', (
       ['Blog', null, null, null, 0, 0]
     ]
   )
+  assert.equal(snap.worktrees[0].pr?.url, 'https://github.com/acme/menu/pull/143')
+})
+
+test('keeps only http(s) PR links', () => {
+  const odd = [{ ...cli[0], linkedPR: { ...cli[0].linkedPR!, url: 'javascript:alert(1)' } }]
+  assert.equal(buildSnapshot(api, odd, NOW).worktrees.find((w) => w.pr)?.pr?.url, null)
 })
 
 test('works without the CLI: API data only', () => {
@@ -143,6 +150,67 @@ test('an agent the API still calls working, but the CLI does not, is idle and wa
   assert.deepEqual(snap.waiting.map((a) => [a.title, a.state]), [['Voz', 'idle']])
   // Without the CLI there is nothing to contradict the API: it stays working.
   assert.equal(buildSnapshot(stuck, null, NOW).working.length, 1)
+})
+
+test('an agent whose own turn is over shows that turn, though Orca still watches a background task', () => {
+  const watched: ApiWorkspace[] = [
+    {
+      id: 'identity:wt2:local:ccc',
+      kind: 'worktree',
+      name: 'menu-subcategories',
+      project: 'storefront',
+      branch: 'feature/menu-subcategories',
+      status: null,
+      agents: [{ terminalId: 'term_7', title: 'Subcategorías', agent: 'claude', state: 'working', stateStartedAt: NOW - 1_700_000 }]
+    }
+  ]
+  const cliFor = (main: string): CliWorktree[] => [
+    {
+      worktreeId: 'x',
+      identity: { key: 'wt2:local:ccc' },
+      agents: [{ address: 'term_7', state: 'working', toolName: 'Bash', mainAgent: { state: main, stateStartedAt: NOW - 30_000 } }]
+    }
+  ]
+  const done = buildSnapshot(watched, cliFor('done'), NOW)
+  assert.deepEqual(done.working, [])
+  // It answered 30 s ago: done since then, not idle since the watch began.
+  assert.deepEqual(done.waiting.map((a) => [a.title, a.state, a.since]), [['Subcategorías', 'done', NOW - 30_000]])
+  assert.equal(buildSnapshot(watched, cliFor('waiting'), NOW).waiting[0].state, 'waiting')
+  // While the agent itself works, it stays working.
+  assert.equal(buildSnapshot(watched, cliFor('working'), NOW).working.length, 1)
+})
+
+test('an agent waiting on a working subagent stays working, though its own turn is over', () => {
+  const api: ApiWorkspace[] = [
+    {
+      id: 'identity:wt2:local:ddd',
+      kind: 'worktree',
+      name: 'floorplan',
+      project: 'waiter',
+      branch: 'feature/floorplan',
+      status: null,
+      agents: [{ terminalId: 'term_8', title: 'Floorplan', agent: 'claude', state: 'working', stateStartedAt: NOW - 60_000 }]
+    }
+  ]
+  const cliWith = (sub: string): CliWorktree[] => [
+    {
+      worktreeId: 'x',
+      identity: { key: 'wt2:local:ddd' },
+      agents: [
+        {
+          address: 'term_8',
+          state: 'working',
+          mainAgent: { state: 'done', stateStartedAt: NOW - 20_000 },
+          subagents: [{ state: sub, agentType: 'general-purpose', description: 'Review the plan' }]
+        }
+      ]
+    }
+  ]
+  const busy = buildSnapshot(api, cliWith('working'), NOW)
+  assert.deepEqual(busy.waiting, [])
+  assert.deepEqual(busy.working.map((a) => [a.state, a.activity]), [['working', 'Subagent · Review the plan']])
+  // Once the subagent ends, the session's own turn shows again.
+  assert.equal(buildSnapshot(api, cliWith('done'), NOW).waiting[0].state, 'done')
 })
 
 test('cleanTitle drops Claude markup from session titles', async () => {

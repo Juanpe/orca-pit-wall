@@ -17,7 +17,7 @@ and is sitting idle, and you only notice when you go looking.
 
 Pit Wall is a read-only side panel for Orca that answers that at a glance.
 It draws every open agent session as an org chart (you → projects →
-sessions), colored by state, and tells you what to do next. Built around
+sessions), each state with its own icon, and tells you what to do next. Built around
 "one task = one worktree = one session".
 
 Let's get back to work 🙂
@@ -32,14 +32,14 @@ Let's get back to work 🙂
 </p>
 
 <p align="center">
-  <img src="assets/pit-wall-overview.png" alt="Pit Wall's overview: counters for sessions waiting, working and idle, an org chart of four projects with their sessions colored by state, and a What to do now list led by a permission request." width="420">
+  <img src="assets/pit-wall-overview.png" alt="Pit Wall's overview: counters for sessions waiting, working and idle, an org chart of four projects with an icon per session state, and a What to do now list led by a permission request." width="420">
 </p>
 
 <a name="features"></a>
 
 ## 🌟 Features
 
-- 🚦 **See every session's state:** permission, question, idle, done or working, each with its own color.
+- 🚦 **See every session's state:** permission, question, idle, done or working, each with its own icon and color. Only what needs you moves.
 - 🗺 **Org chart:** you → projects → open sessions, with the projects that need you first.
 - 🎯 **What to do now:** the sessions that have waited on you the longest, with their last message.
 - 👀 **Put seen sessions aside:** finished ones you already opened stop counting as pending, until the agent moves again.
@@ -84,8 +84,24 @@ There are four tabs:
 | 🌳 **Worktrees** | Every worktree grouped by project, most recent first, with branch, PR (`draft`, `open`, `merged`) and checks |
 | 🔀 **PRs** | Every PR in your worktrees by what it needs: checks failing, checks running, ready for review, drafts and, collapsed, merged or closed |
 
+Each session's state reads from its icon:
+
+| Icon | State |
+| --- | --- |
+| 🔒 shakes | Needs permission |
+| **?** tilts | Asked a question |
+| ● still | Idle at the prompt |
+| ✓ + `NEW` | Done, until you open it |
+| ••• bounce | Working |
+
+With *Reduce motion* turned on in macOS, nothing moves.
+
 - **Click a session** → focuses its terminal.
+- **Click a session's `#123`** → opens its PR on GitHub. Only sessions whose
+  worktree has a PR show it.
 - **Click a worktree or a PR** → opens the worktree.
+- **The worktree open in Orca** is marked with ▸ and a light fill, in the org
+  chart and in Worktrees.
 - **The header** says `● live · time`, and switches to `no data` if refreshing stops.
 
 > 💡 Questions and permission prompts are never put aside as seen: they wait
@@ -109,6 +125,12 @@ There are four tabs:
   off without telling Orca (Esc, Ctrl-C, a half-finished exit). If
   `orca worktree ps` doesn't see that agent working, Pit Wall shows it as
   idle and waiting on you, which is where it really is.
+- **Background tasks:** Orca also keeps a session "working" while it watches
+  a background task, even one that never ends, such as Claude Code's watch on
+  an artifact it published. When the agent's own turn is over, Pit Wall shows
+  what that turn says: done, a question or a permission. While a subagent
+  it launched is still working, the session stays in Working and shows
+  what that subagent is doing.
 
 <a name="permissions"></a>
 

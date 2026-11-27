@@ -1,7 +1,8 @@
 // Pit Wall's visual panel: an org chart of what you launched (you → projects → open sessions),
 // who is waiting on you, and every worktree. It reads everything from the plugin's worker.
 import '../src/protocol'
-import type { AgentRow, RowState, Snapshot, WorktreeRow } from '../src/protocol'
+import type { FrameEvents } from 'orca/frame'
+import type { AgentRow, PrInfo, RowState, Snapshot, WorktreeRow } from '../src/protocol'
 import { short } from '../src/time'
 import {
   buildView,
@@ -16,8 +17,12 @@ import {
 } from '../src/view'
 
 const REFRESH_MS = 5000
+/** How often to ask Orca which workspace is focused, in case `workspace.changed` did not arrive. */
+const FOCUS_POLL_MS = 1000
 const EVENT_DEBOUNCE_MS = 400
 const SEEN_KEY = 'seen'
+/** Longest animation period in index.html; every other period divides it. */
+const ANIM_MS = 3200
 type Tab = 'overview' | 'sessions' | 'worktrees' | 'prs'
 
 const STATE: Record<RowState, { tag: string; color: string; legend: string }> = {
@@ -34,8 +39,22 @@ let seen: Seen = {}
 let tab: Tab = 'overview'
 let error: string | null = null
 let lastOk = 0
+/** What Orca says is focused now (`workspace.changed`); null when nothing is. */
+type Focus = FrameEvents['workspace.changed']['context']
+let focus: Focus = null
+/** The snapshot id of the focused workspace, worked out once per draw. */
+let here: string | null = null
+/**
+ * The terminal of the session last opened from this panel. Orca says which workspace is focused
+ * but not which of its tabs, so when that workspace has several sessions this one is marked.
+ */
+let lastOpened: string | null = null
+/** How many sessions the focused workspace has, worked out once per draw. */
+let hereSessions = 0
 /** Rows by id, for clicks: the DOM only carries the id. */
 let rows = new Map<string, AgentRow>()
+/** Each worktree's PR, so a session can show the one where it works. Rebuilt on every draw. */
+let prByWorkspace = new Map<string, PrInfo>()
 
 // ---------- data ----------
 
@@ -79,7 +98,9 @@ function openRow(row: AgentRow): void {
   if (canBeSeen(row) && !seen[seenKey(row)]) {
     void saveSeen({ ...seen, [seenKey(row)]: true }).then(render)
   }
+  lastOpened = row.terminalId ?? null
   open(row.workspaceId, row.terminalId)
+  render()
 }
 
 function open(workspaceId: string, terminalId?: string | null): void {
@@ -89,6 +110,40 @@ function open(workspaceId: string, terminalId?: string | null): void {
     render()
   })
 }
+
+/**
+ * Which snapshot workspace is the one open in Orca. The context's id is not always the id
+ * `workspace.list` uses, so its terminals and then its name and branch settle it.
+ */
+function focusedWorkspace(s: Snapshot, f: Focus): string | null {
+  if (!f) return null
+  if (f.workspaceId && s.worktrees.some((w) => w.workspaceId === f.workspaceId)) return f.workspaceId
+  const terminals = new Set(f.terminals.map((t) => t.id))
+  const byTerminal = [...s.waiting, ...s.working].find((a) => a.terminalId && terminals.has(a.terminalId))
+  if (byTerminal) return byTerminal.workspaceId
+  const branch = f.branch.replace(/^refs\/heads\//, '')
+  const byName = s.worktrees.filter((w) => w.name === f.displayName && (!branch || w.branch === branch))
+  return byName.length === 1 ? byName[0].workspaceId : null
+}
+
+/** Opens a PR in the browser. Orca asks the first time for a host the plugin has not opened before. */
+function openPr(url: string): void {
+  if (!orca.shell) {
+    error = 'Opening links needs the Orca desktop app.'
+    render()
+    return
+  }
+  orca.shell.openExternal(url).catch((e: unknown) => {
+    error = `Could not open the PR: ${e instanceof Error ? e.message : String(e)}`
+    render()
+  })
+}
+
+const isHere = (workspaceId: string): string => (workspaceId === here ? ' here' : '')
+/** A session is open now when its workspace is and, if that workspace has several, it was the last opened here. */
+const sessionIsHere = (a: AgentRow): boolean =>
+  a.workspaceId === here && (hereSessions <= 1 || (!!a.terminalId && a.terminalId === lastOpened))
+const HERE_TITLE = ' · open now'
 
 // ---------- html helpers ----------
 
@@ -109,6 +164,48 @@ function rowId(a: AgentRow): string {
 
 // ---------- pieces ----------
 
+/** Classes for a row by its state; a session you've already seen stays still. */
+function live(state: RowState, isSeen: boolean): string {
+  return isSeen ? ' seen' : ` s-${state}`
+}
+
+const LOCK =
+  '<svg viewBox="0 0 24 26" fill="currentColor"><path d="M6 10V7a6 6 0 0 1 12 0v3h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V12a2 2 0 0 1 2-2h1zm3 0h6V7a3 3 0 0 0-6 0v3z"/></svg>'
+const CHECK =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.2 3L13 4.5"/></svg>'
+
+/** The state's shape: what it is reads from the shape, motion only where something is happening. */
+function icon(state: RowState): string {
+  const inner =
+    state === 'working'
+      ? '<i></i><i></i><i></i>'
+      : state === 'waiting'
+        ? '?'
+        : state === 'blocked'
+          ? LOCK
+          : state === 'done'
+            ? CHECK
+            : '<span class="dot"></span>'
+  return `<span class="ic ic-${state}" style="--c:${STATE[state].color}">${inner}</span>`
+}
+
+/** A finished session you haven't opened yet. Only the org chart says so: the lists already split new from seen. */
+const isNew = (a: AgentRow, isSeen: boolean): boolean => a.state === 'done' && !isSeen
+const NEW = '<span class="new">NEW</span>'
+
+const PR_GLYPH =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v12"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/></svg>'
+
+/** The session's PR on its own line, a link to GitHub; nothing when its worktree has none. */
+function prLine(a: AgentRow): string {
+  const pr = prByWorkspace.get(a.workspaceId)
+  if (!pr) return ''
+  const label = `${PR_GLYPH}<b>#${pr.number}</b>`
+  return pr.url
+    ? `<span class="pr-line" data-pr="${esc(pr.url)}" title="${esc(`Open #${pr.number} on GitHub · ${pr.title}`)}">${label}<span class="arrow">↗</span></span>`
+    : `<span class="pr-line" title="${esc(pr.title)}">${label}</span>`
+}
+
 function kpi(label: string, value: number, color: string): string {
   return `<div class="kpi${value ? '' : ' zero'}" style="--c:${color}">
     <div class="label">${label}</div><div class="value">${value}</div></div>`
@@ -116,13 +213,14 @@ function kpi(label: string, value: number, color: string): string {
 
 function node(a: AgentRow, isSeen: boolean): string {
   const s = STATE[a.state]
-  return `<button class="node${isSeen ? ' seen' : ''}${a.state === 'working' ? ' working' : ''}" data-row="${rowId(a)}"
-      title="${esc(`${s.tag} · ${a.title} · ${where(a)}`)}">
-    <span class="dot" style="--c:${s.color}"></span>
+  const atHere = sessionIsHere(a)
+  return `<button class="node${live(a.state, isSeen)}${atHere ? ' here' : ''}" data-row="${rowId(a)}"
+      title="${esc(`${s.tag} · ${a.title} · ${where(a)}${atHere ? HERE_TITLE : ''}`)}">
+    ${icon(a.state)}
     <span class="body"><span class="title trunc">${esc(a.title)}</span>${
       a.workspace !== a.project ? `<span class="wt-name trunc">${esc(a.workspace)}</span>` : ''
-    }</span>
-    <span class="ago">${ago(a.since)}</span>
+    }${prLine(a)}</span>
+    ${isNew(a, isSeen) ? NEW : ''}<span class="ago">${ago(a.since)}</span>
   </button>`
 }
 
@@ -152,9 +250,10 @@ function item(a: AgentRow, isSeen = false): string {
         : a.lastMessage
           ? `“${a.lastMessage}”`
           : null
-  return `<button class="item${isSeen ? ' seen' : ''}" style="--c:${s.color}" data-row="${rowId(a)}">
-    <div class="top"><span class="tag">${s.tag}</span><span class="title trunc">${esc(a.title)}</span><span class="ago">${ago(a.since)}</span></div>
+  return `<button class="item${live(a.state, isSeen)}" style="--c:${s.color}" data-row="${rowId(a)}">
+    <div class="top">${icon(a.state)}<span class="tag">${s.tag}</span><span class="title trunc">${esc(a.title)}</span><span class="ago">${ago(a.since)}</span></div>
     <div class="sub trunc">${esc(where(a))}</div>
+    ${prLine(a)}
     ${detail ? `<div class="msg trunc">${esc(detail)}</div>` : ''}
   </button>`
 }
@@ -196,7 +295,7 @@ function agentChips(w: WorktreeRow): string[] {
   if (w.agentsWaiting)
     chips.push(`<span class="chip c" style="--c:var(--c-waiting)"><span class="dot"></span>${w.agentsWaiting} waiting</span>`)
   if (w.agentsWorking)
-    chips.push(`<span class="chip c" style="--c:var(--c-working)"><span class="dot"></span>${w.agentsWorking} working</span>`)
+    chips.push(`<span class="chip c" style="--c:var(--c-working)">${icon('working')}${w.agentsWorking} working</span>`)
   return chips
 }
 
@@ -204,7 +303,9 @@ function worktree(w: WorktreeRow): string {
   // The project is the group's header, so only a branch that differs from the name is worth repeating.
   const sub = w.branch && w.branch !== w.name ? w.branch : ''
   const chips = [...(w.pr ? prChips(w.pr) : []), ...agentChips(w)]
-  return `<button class="wt" data-ws="${esc(w.workspaceId)}">
+  return `<button class="wt${isHere(w.workspaceId)}" data-ws="${esc(w.workspaceId)}"${
+    w.workspaceId === here ? ` title="${esc(w.name + HERE_TITLE)}"` : ''
+  }>
     <div class="top"><span class="name trunc">${esc(w.name)}</span><span class="ago">${ago(w.lastActivityAt)}</span></div>
     ${sub ? `<div class="muted trunc">${esc(sub)}</div>` : ''}
     ${chips.length ? `<div class="chips">${chips.join('')}</div>` : ''}
@@ -216,7 +317,7 @@ function worktree(w: WorktreeRow): string {
 function overview(view: View): string {
   const k = view.kpis
   const legend = (['blocked', 'waiting', 'idle', 'done', 'working'] as RowState[])
-    .map((s) => `<span><span class="dot" style="--c:${STATE[s].color}"></span>${STATE[s].legend}</span>`)
+    .map((s) => `<span>${icon(s)}${STATE[s].legend}</span>`)
     .join('')
   return `
     <div class="kpis">
@@ -316,8 +417,38 @@ function tabs(view: View): string {
   return `<nav role="tablist">${t('overview', 'Overview')}${t('sessions', 'Sessions', view.kpis.fresh)}${t('worktrees', 'Worktrees', view.kpis.worktrees)}${t('prs', 'PRs', view.prs.active)}</nav>`
 }
 
+/**
+ * A redraw replaces the panel's HTML. One that lands between pressing and releasing the mouse removes
+ * the element you pressed, so the click never fires and you have to click again. Redraws asked for
+ * while the pointer is down wait until just after the click.
+ */
+let pressing = false
+let redrawHeld = false
+
+app.addEventListener('pointerdown', () => {
+  pressing = true
+})
+for (const type of ['pointerup', 'pointercancel'] as const) {
+  window.addEventListener(type, () => {
+    if (!pressing) return
+    pressing = false
+    // The click fires after pointerup: redraw on the next task, once it has been handled.
+    if (redrawHeld) setTimeout(render, 0)
+    redrawHeld = false
+  })
+}
+
 function render(): void {
+  if (pressing) {
+    redrawHeld = true
+    return
+  }
+  draw()
+}
+
+function draw(): void {
   rows = new Map()
+  prByWorkspace = new Map(snap ? snap.worktrees.flatMap((w) => (w.pr ? [[w.workspaceId, w.pr] as const] : [])) : [])
   if (!snap) {
     app.innerHTML = error
       ? `${header()}<div class="alert" style="--c:var(--c-blocked)">Could not read Orca: ${esc(error)}</div>`
@@ -325,6 +456,8 @@ function render(): void {
     return
   }
   const view = buildView(snap, seen)
+  here = focusedWorkspace(snap, focus)
+  hereSessions = [...snap.waiting, ...snap.working].filter((a) => a.workspaceId === here).length
   const alerts = [
     error ? `<div class="alert" style="--c:var(--c-blocked)">${esc(error)}</div>` : '',
     snap.enrichmentError
@@ -342,10 +475,29 @@ function render(): void {
   // Keep the reader where they were across the 5 s redraws.
   const y = window.scrollY
   const openDetails = !!app.querySelector('details[open]')
+  // Every animation shares one clock, so a redraw continues them instead of restarting them.
+  document.documentElement.style.setProperty('--phase', `-${Date.now() % ANIM_MS}ms`)
   app.innerHTML = header() + tabs(view) + alerts + body
   if (openDetails) app.querySelector('details')?.setAttribute('open', '')
   window.scrollTo(0, y)
+  layoutChart()
+}
+
+/** Masonry for the project boxes, then the wires to them. */
+function layoutChart(): void {
+  packOffices()
   drawWires()
+}
+
+const OFFICE_ROW_PX = 2
+const OFFICE_GAP_PX = 12
+
+/** Each project box spans as many grid rows as it is tall, so short ones don't stretch to a tall neighbour. */
+function packOffices(): void {
+  for (const el of document.querySelectorAll<HTMLElement>('[data-office]')) {
+    const rows = Math.ceil((el.getBoundingClientRect().height + OFFICE_GAP_PX) / OFFICE_ROW_PX)
+    el.style.gridRowEnd = `span ${rows}`
+  }
 }
 
 /** Curved wires from you to each project, as on an org chart. */
@@ -372,6 +524,12 @@ function drawWires(): void {
 // ---------- events ----------
 
 app.addEventListener('click', (event) => {
+  // The PR link sits inside the session's button: it opens the PR, not the terminal.
+  const pr = (event.target as HTMLElement).closest<HTMLElement>('[data-pr]')
+  if (pr?.dataset.pr) {
+    openPr(pr.dataset.pr)
+    return
+  }
   const target = (event.target as HTMLElement).closest<HTMLElement>('[data-row],[data-ws],[data-tab]')
   if (!target) return
   if (target.dataset.tab) {
@@ -386,7 +544,7 @@ app.addEventListener('click', (event) => {
   }
 })
 
-new ResizeObserver(() => drawWires()).observe(document.body)
+new ResizeObserver(() => layoutChart()).observe(document.body)
 
 /** "live · 13:58:02" while data is fresh; otherwise how old it is. */
 function liveText(): { text: string; ok: boolean } {
@@ -414,7 +572,23 @@ orca.on('agent.status.changed', () => {
   clearTimeout(debounce)
   debounce = setTimeout(() => void refresh(), EVENT_DEBOUNCE_MS)
 })
-orca.on('theme', () => drawWires())
+orca.on('workspace.changed', ({ context }) => setFocus(context))
+
+/** Redraws only when the focused workspace or its terminals really changed. */
+function setFocus(context: Focus): void {
+  if (JSON.stringify(context) === JSON.stringify(focus)) return
+  focus = context
+  render()
+}
+
+// Switching worktree from Orca's menus does not always send `workspace.changed`, so ask too.
+setInterval(() => {
+  if (document.visibilityState !== 'visible') return
+  orca.host.call('workspace.readContext', {}).then(setFocus, (e: unknown) => {
+    console.error('[pit-wall] could not read the focused workspace', e)
+  })
+}, FOCUS_POLL_MS)
+orca.on('theme', () => layoutChart())
 orca.storage.onDidChange(({ key }) => {
   if (key === SEEN_KEY) void loadSeen().then(render)
 })
